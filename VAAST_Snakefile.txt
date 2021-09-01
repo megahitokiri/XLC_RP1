@@ -1,0 +1,1401 @@
+configfile: "config.yaml"
+
+os.environ["TMPDIR"] = config['tmpdir']
+
+#--------------------------------------------------------------------------------
+# TargetRule all
+#--------------------------------------------------------------------------------
+
+rule all:
+    input:
+        expand("Cases/{project}.vaast", project=config["project"]),
+        expand("Cases/{project}.simple", project=config["project"]),
+        expand("Cases/{project}.phevor.txt", project=config["project"]),
+        #expand("Cases/VAT/{project}.{case_id}_.vat.gvf", project=config["project"], case_id=config["case_ids"]), 
+        #expand("Cases/{family}/{project}.{family}.mdln2.pdf", family=config["families"].keys(), project=config["project"]),
+        # expand("Cases/{family}/{project}.{family}.full_fam.mdln2.pdf", family=config["families"].keys(), project=config["project"]),
+
+#--------------------------------------------------------------------------------
+# vt_decompose_norm_uniq
+#--------------------------------------------------------------------------------
+
+rule vt_decompose_norm_uniq:
+    input:
+        vcf=config['vcf_file'],
+        tbi=expand("{vcf_file}.tbi", vcf_file = config['vcf_file']),
+        ref=expand("{ref_genome}", ref_genome=config["ref_genome"]),
+    output:
+        "VCF_Prep/{project}.norm_{chr}.vcf.gz",
+    log:
+        decmp="logs/vt_decmp.{project}.{chr}.log",
+        blksub="logs/vt_blksub.{project}.{chr}.log",
+        norm="logs/vt_norm.{project}.{chr}.log",
+        uniq="logs/vt_uniq.{project}.{chr}.log",
+        bgzip="logs/vt_bgzip.{project}.{chr}.log",
+    benchmark:
+        "benchmarks/vt_decompose_norm_uniq.{project}.{chr}.txt",
+    threads: 16
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "vt decompose "
+        "-s "
+        "-i {wildcards.chr} "
+        "{input.vcf} "
+        "2> {log.decmp} | "
+        "vt decompose_blocksub -a - "
+        "2> {log.blksub} | "
+        "vt normalize -r {input.ref} - "
+        "2> {log.norm} | "
+        "vt uniq - "
+        "2> {log.uniq} | "
+        "bgzip "
+        "> {output} "
+        "2> {log.bgzip} "
+
+#--------------------------------------------------------------------------------
+# test_gzip_norm
+#--------------------------------------------------------------------------------
+
+rule test_gzip_norm:
+    input:
+        "VCF_Prep/{project}.norm_{chr}.vcf.gz",
+    output:
+        "VCF_Prep/{project}.norm_{chr}_test_gzip.txt",
+    log:
+        "logs/test_gzip_norm_{chr}.log",
+    benchmark:
+        "benchmarks/test_gzip_norm_{chr}.txt",
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "get_file_details {input} "
+        "> {output} "
+        "2> {log} "
+
+#--------------------------------------------------------------------------------
+# tabix_norm
+#--------------------------------------------------------------------------------
+
+rule tabix_norm:
+    input:
+        "VCF_Prep/{project}.norm_{chr}.vcf.gz",
+    output:
+        "VCF_Prep/{project}.norm_{chr}.vcf.gz.tbi",
+    log:
+        "logs/tabix_norm_{chr}.log",
+    benchmark:
+        "benchmarks/tabix_norm_{chr}.txt",
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "tabix -f {input} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# vcfanno_samples
+#--------------------------------------------------------------------------------
+
+rule vcfanno_samples:
+    input:
+        vcf="VCF_Prep/{project}.norm_{chr}.vcf.gz",
+        tbi="VCF_Prep/{project}.norm_{chr}.vcf.gz.tbi",
+        test="VCF_Prep/{project}.norm_{chr}_test_gzip.txt",
+        conf=config["gnomad_conf"],
+        gnomad=config["gnomad_conf"],
+    output:
+        "VCF_Prep/{project}.gnomad_{chr}.vcf.gz",
+    log:
+        anno="logs/vcfanno_samples_{chr}.log",
+        bgzip="logs/vcfanno_samples_bgzip_{chr}.log",
+    benchmark:
+        "benchmarks/vcfanno_samples_{chr}.txt",
+    threads: 16
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "vcfanno "
+        "-p {threads} "
+        "gnomad.conf "
+        "{input.vcf} "
+        "2> {log.anno} "
+        #-------- PIPE --------
+        "| bgzip "
+        "> {output} "
+        "2> {log.bgzip} "
+        
+#--------------------------------------------------------------------------------
+# test_gzip_vcfanno_samples
+#--------------------------------------------------------------------------------
+
+rule test_gzip_vcfanno_samples:
+    input:
+        "VCF_Prep/{project}.gnomad_{chr}.vcf.gz",
+    output:
+        "VCF_Prep/{project}.gnomad_{chr}_test_gzip.txt",
+    log:
+        "logs/test_gzip_vcfanno_samples_{chr}.log",
+    benchmark:
+        "benchmarks/test_gzip_vcfanno_samples_{chr}.txt",
+    threads: 16
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "get_file_details {input} "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# tabix_vcfanno_samples
+#--------------------------------------------------------------------------------
+
+rule tabix_vcfanno_samples:
+    input:
+        "VCF_Prep/{project}.gnomad_{chr}.vcf.gz",
+    output:
+        "VCF_Prep/{project}.gnomad_{chr}.vcf.gz.tbi",
+    log:
+        "logs/tabix_vcfanno_samples_{chr}.log",
+    benchmark:
+        "benchmarks/tabix_vcfanno_samples_{chr}.txt",
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "tabix -f {input} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# gnomad_af_filter
+#--------------------------------------------------------------------------------
+
+rule gnomad_af_filter:
+    input:
+        vcf="VCF_Prep/{project}.gnomad_{chr}.vcf.gz",
+        tbi="VCF_Prep/{project}.gnomad_{chr}.vcf.gz.tbi",
+        test="VCF_Prep/{project}.gnomad_{chr}_test_gzip.txt",
+    output:
+        "VCF_Prep/{project}.af-filter_{chr}.vcf.gz",
+    log:
+        "logs/af-filter_{chr}.log",
+    benchmark:
+        "benchmarks/af-filter_{chr}.txt",
+    params:
+        max_gnomad_af=config["max_gnomad_af"],
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "bcftools view "
+        "--exclude 'INFO/gnomad_af_Exomes>{params.max_gnomad_af} || gnomad_af_Genomes>{params.max_gnomad_af}' "
+        "-o {output} "
+        "-O z "
+        "{input.vcf} "
+        "2> {log}"
+        
+#--------------------------------------------------------------------------------
+# test_gzip_af_filter
+#--------------------------------------------------------------------------------
+
+rule test_gzip_af_filter:
+    input:
+        "VCF_Prep/{project}.af-filter_{chr}.vcf.gz",
+    output:
+        "VCF_Prep/{project}.af-filter_{chr}_test_gzip.txt",
+    log:
+        "logs/test_gzip_af-filter_{chr}.log",
+    benchmark:
+        "benchmarks/test_gzip_af-filter_{chr}.txt",
+    threads: 16
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "get_file_details {input} "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# tabix_gnomad_af_filter
+#--------------------------------------------------------------------------------
+
+rule tabix_gnomad_af_filter:
+    input:
+        "VCF_Prep/{project}.af-filter_{chr}.vcf.gz",
+    output:
+        "VCF_Prep/{project}.af-filter_{chr}.vcf.gz.tbi",
+    log:
+        "logs/tabix_af-filter_{chr}.log",
+    benchmark:
+        "benchmarks/tabix_af-filter_{chr}.txt",
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "tabix -f {input} "
+        "2> {log}"
+
+
+#--------------------------------------------------------------------------------
+# sample_fill_tags
+#--------------------------------------------------------------------------------
+
+rule sample_fill_tags:
+    input:
+        vcf="VCF_Prep/{project}.af-filter_{chr}.vcf.gz",
+        tbi="VCF_Prep/{project}.af-filter_{chr}.vcf.gz.tbi",
+        test="VCF_Prep/{project}.af-filter_{chr}_test_gzip.txt",
+    output:
+        "VCF_Prep/{project}.fill-tags_{chr}.vcf.gz",
+    log:
+        "logs/fill-tags_{chr}.log",
+    benchmark:
+        "benchmarks/fill-tags_{chr}.txt",
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "bcftools +fill-tags "
+        "{input.vcf} "
+        "-o {output} "
+        "-O z "
+        "2> {log}"
+        
+#--------------------------------------------------------------------------------
+# test_gzip_fill_tags
+#--------------------------------------------------------------------------------
+
+rule test_gzip_fill_tags:
+    input:
+        "VCF_Prep/{project}.fill-tags_{chr}.vcf.gz",
+    output:
+        "VCF_Prep/{project}.fill-tags_{chr}_test_gzip.txt",
+    log:
+        "logs/test_gzip_fill-tags_{chr}.log",
+    benchmark:
+        "benchmarks/test_gzip_fill-tags_{chr}.txt",
+    threads: 16
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "get_file_details {input} "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# tabix_sample_fill_tags
+#--------------------------------------------------------------------------------
+
+rule tabix_sample_fill_tags:
+    input:
+        "VCF_Prep/{project}.fill-tags_{chr}.vcf.gz",
+    output:
+        "VCF_Prep/{project}.fill-tags_{chr}.vcf.gz.tbi",
+    log:
+        "logs/tabix_fill-tags_{chr}.log",
+    benchmark:
+        "benchmarks/tabix_sample_fill-tags_{chr}.txt",
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "tabix -f {input} "
+        "2> {log}"
+        
+#--------------------------------------------------------------------------------
+# concat_all
+#--------------------------------------------------------------------------------
+
+rule concat_all:
+    input:
+        vcf=expand("VCF_Prep/{project}.fill-tags_{chr}.vcf.gz", project=config["project"],
+                   chr=config["chr"]),
+        tbi=expand("VCF_Prep/{project}.fill-tags_{chr}.vcf.gz.tbi", project=config["project"],
+                   chr=config["chr"]),
+        test=expand("VCF_Prep/{project}.fill-tags_{chr}_test_gzip.txt", project=config["project"],
+                    chr=config["chr"]),
+    output:
+        "VCF_Prep/{project}.concat_all.vcf",
+    log:
+        "logs/concat_all.log",
+    benchmark:
+        "benchmarks/concat_all.txt",
+    shell:
+        "bcftools concat "
+        "{input.vcf} "
+        "> {output} "
+        "2> {log} "
+
+#--------------------------------------------------------------------------------
+# control_ids
+#--------------------------------------------------------------------------------
+
+rule control_ids:
+    input:
+    output:
+        "Controls/{project}.control_ids.txt",
+    log:
+        "logs/control_ids.log",
+    benchmark:
+        "benchmarks/control_ids.txt",
+    params:
+        control_ids = config['control_ids'],
+    shell:
+        "perl -e 'print join \"\\n\", qw({params.control_ids})' "
+        "> {output} "
+        "2> {log}"
+        
+#--------------------------------------------------------------------------------
+# split_controls
+#--------------------------------------------------------------------------------
+
+rule split_controls:
+    input:
+        vcf="VCF_Prep/{project}.fill-tags_{chr}.vcf.gz",
+        tbi="VCF_Prep/{project}.fill-tags_{chr}.vcf.gz.tbi",
+        test="VCF_Prep/{project}.fill-tags_{chr}_test_gzip.txt",
+        ids="Controls/{project}.control_ids.txt",
+
+    output:
+        "Controls/{project}.split_controls_{chr}.vcf.gz",
+    log:
+        "logs/split_controls_{chr}.log",
+    benchmark:
+        "benchmarks/split_controls_{chr}.txt",
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "bcftools view "
+        "--force-samples "
+        "-S {input.ids} "
+        "-o {output} "
+        "-O z "
+        "{input.vcf} "
+        "2> {log} "
+
+#--------------------------------------------------------------------------------
+# test_split_controls
+#--------------------------------------------------------------------------------
+
+rule test_split_controls:
+    input:
+        "Controls/{project}.split_controls_{chr}.vcf.gz",
+    output:
+        "Controls/{project}.split_controls_{chr}_test_gzip.txt",
+    log:
+        "logs/test_split_controls_{chr}.log",
+    benchmark:
+        "benchmarks/test_split_controls_{chr}.txt",
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "get_file_details {input} "
+        "> {output} "
+        "2> {log} "
+
+#--------------------------------------------------------------------------------
+# tabix_split_controls
+#--------------------------------------------------------------------------------
+
+rule tabix_split_controls:
+    input:
+        vcf="Controls/{project}.split_controls_{chr}.vcf.gz",
+    output:
+        "Controls/{project}.split_controls_{chr}.vcf.gz.tbi",
+    log:
+        "logs/tabix_split_controls_{chr}.log",
+    benchmark:
+        "benchmarks/tabix_split_controls_{chr}.txt",
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "tabix {input.vcf} "
+        "2> {log} "
+
+#--------------------------------------------------------------------------------
+# concat_controls
+#--------------------------------------------------------------------------------
+
+rule concat_controls:
+    input:
+        vcf=expand("Controls/{project}.split_controls_{chr}.vcf.gz", project=config["project"],
+                   chr=config["chr"]),
+        tbi=expand("Controls/{project}.split_controls_{chr}.vcf.gz.tbi", project=config["project"],
+                   chr=config["chr"]),
+        test=expand("Controls/{project}.split_controls_{chr}_test_gzip.txt", project=config["project"],
+                    chr=config["chr"]),
+    output:
+        "Controls/{project}.concat_controls.vcf.gz",
+    log:
+        concat="logs/concat_controls.log",
+        bgzip="logs/concat_controls_bgzip.log",
+    benchmark:
+        "benchmarks/concat_controls.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+    shell:
+        "bcftools concat "
+        "{input.vcf} "
+        "2> {log.concat} "
+        #-------- PIPE --------
+        "| bgzip "
+        "> {output} "
+        "2> {log.bgzip} "
+
+#--------------------------------------------------------------------------------
+# test_gzip_concat_controls
+#--------------------------------------------------------------------------------
+
+rule test_gzip_concat_controls:
+    input:
+        "Controls/{project}.concat_controls.vcf.gz",
+    output:
+        "Controls/{project}.concat_controls_test_gzip.txt",
+    log:
+        "logs/test_gzip_concat_controls.log",
+    benchmark:
+        "benchmarks/test_gzip_concat_controls.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+    shell:
+        "get_file_details {input} "
+        "> {output} "
+        "2> {log} "
+
+#--------------------------------------------------------------------------------
+# tabix_concat_controls
+#--------------------------------------------------------------------------------
+
+rule tabix_concat_controls:
+    input:
+        "Controls/{project}.concat_controls.vcf.gz",
+    output:
+        "Controls/{project}.concat_controls.vcf.gz.tbi",
+    log:
+        "logs/tabix_concat_controls.log",
+    benchmark:
+        "benchmarks/tabix_concat_controls.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+    shell:
+        "tabix {input} "
+        "2> {log} "
+
+#--------------------------------------------------------------------------------
+# bcftools_view_controls
+#--------------------------------------------------------------------------------
+
+rule bcftools_view_controls:
+    input:
+        vcf="Controls/{project}.concat_controls.vcf.gz",
+        tbi="Controls/{project}.concat_controls.vcf.gz.tbi",
+        test="Controls/{project}.concat_controls_test_gzip.txt",
+    output:
+        "Controls/VCF/{project}.{control_id}_.vcf.gz",
+    log:
+        "logs/bcftools_view_controls_{control_id}_.log",
+    benchmark:
+        "benchmarks/bcftools_view_controls_{control_id}_.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+        #control_id="[^\_]+",
+    shell:
+        "bcftools view "
+        "-s {wildcards.control_id} "
+        "-o {output} "
+        "--force-samples "
+        "-O z "
+        "{input.vcf} "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# vaast_converter_controls
+#--------------------------------------------------------------------------------
+
+rule vaast_converter_controls:
+    input:
+        "Controls/VCF/{project}.{control_id}_.vcf.gz",
+    output:
+        "Controls/GVF/{project}.{control_id}_.gvf",
+    log:
+        "logs/vaast_converter_controls_{control_id}_.log",
+    benchmark:
+        "benchmarks/vaast_converter_controls_{control_id}_.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+        #control_id="[^\_]+",
+    shell:
+        "/uufs/chpc.utah.edu/common/HIPAA/u0129786/VAAST/bin/vaast_tools/vaast_converter "
+        "--build GRCh37 "
+        "--stdout "
+        "{input} "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# sort_gvf_controls
+#--------------------------------------------------------------------------------
+
+rule sort_gvf_controls:
+    input:
+        "Controls/GVF/{project}.{control_id}_.gvf",
+    output:
+        temp("Controls/GVF/{project}.{control_id}_.sorted.gvf"),
+    log:
+        "logs/sort_gvf_controls_{control_id}_.log",
+    benchmark:
+        "benchmarks/sort_gvf_controls_{control_id}_.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+        #control_id="[^\_]+",
+    shell:
+        "/uufs/chpc.utah.edu/common/HIPAA/u0129786/VAAST/bin/vaast_tools/vaast_sort_gff "
+        "{input} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# vat_controls
+#--------------------------------------------------------------------------------
+
+rule vat_controls:
+    input:
+        gff3=config['vaast_gff3'],
+        fasta=config['vaast_fasta'],
+        gvf="Controls/GVF/{project}.{control_id}_.sorted.gvf",
+    output:
+        "Controls/VAT/{project}.{control_id}_.vat.gvf",
+    log:
+        "logs/vat_controls_{control_id}_.log",
+    benchmark:
+        "benchmarks/vat_controls_{control_id}_.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+        #control_id="[^\_]+",
+    shell:
+        "/uufs/chpc.utah.edu/common/HIPAA/u0129786/VAAST/bin/VAT "
+        "--features {input.gff3} "
+        "--fasta {input.fasta} "
+        "{input.gvf} "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# index_vat_controls
+#--------------------------------------------------------------------------------
+
+rule index_vat_controls:
+    input:
+        "Controls/VAT/{project}.{control_id}_.vat.gvf",
+    output:
+        "Controls/VAT/{project}.{control_id}_.vat.vgi",
+    log:
+        "logs/index_vat_controls_{control_id}_.log",
+    benchmark:
+        "benchmarks/index_vat_controls_{control_id}_.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+        #control_id="[^\_]+",
+    shell:
+        "/uufs/chpc.utah.edu/common/HIPAA/u0129786/VAAST/bin/vaast_tools/vaast_indexer "
+        "{input} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# control_gvfs
+#--------------------------------------------------------------------------------
+
+rule control_gvfs:
+    input:
+        gvfs=expand("Controls/VAT/{project}.{control_id}_.vat.gvf", project=config['project'], control_id=config['control_ids']),
+        vgis=expand("Controls/VAT/{project}.{control_id}_.vat.vgi", project=config['project'], control_id=config['control_ids']),
+    output:
+        "Controls/{project}.control_gvfs.txt",
+    log:
+        "logs/control_gvfs.log",
+    benchmark:
+        "benchmarks/control_gvfs.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+    shell:
+        "perl -e 'print join \"\\n\", qw({input.gvfs})' "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# vst_controls
+#--------------------------------------------------------------------------------
+
+rule vst_controls:
+    input:
+        "Controls/{project}.control_gvfs.txt",
+    output:
+        "Controls/{project}.controls.cdr",
+    log:
+        "logs/vst_controls.log",
+    benchmark:
+        "benchmarks/vst_controls.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+    shell:
+        "/uufs/chpc.utah.edu/common/HIPAA/u0129786/VAAST/bin/VST "
+        "--input_files {input} "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# clean_control_cdr
+#--------------------------------------------------------------------------------
+
+rule clean_control_cdr:
+    input:
+        "Controls/{project}.controls.cdr",
+    output:
+        "Controls/{project}.controls.clean.cdr",
+    log:
+        "logs/clean_control_cdr.log",
+    benchmark:
+        "benchmarks/clean_control_cdr.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+    shell:
+        "perl -ape "
+        "'s|Controls/VAT/{wildcards.project}.||;s|_.vat.gvf||' "
+        "{input} "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# case_ids
+#--------------------------------------------------------------------------------
+
+rule case_ids:
+    input:
+    output:
+        "Cases/{project}.case_ids.txt",
+    log:
+        "logs/case_id.log",
+    benchmark:
+        "benchmarks/case_ids.txt",
+    params:
+        case_id = config['case_ids'],
+    shell:
+        "perl -e 'print join \"\\n\", qw({params.case_id})' "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# split_cases
+#--------------------------------------------------------------------------------
+
+rule split_cases:
+    input:
+        vcf="VCF_Prep/{project}.fill-tags_{chr}.vcf.gz",
+        tbi="VCF_Prep/{project}.fill-tags_{chr}.vcf.gz.tbi",
+        test="VCF_Prep/{project}.fill-tags_{chr}_test_gzip.txt",
+        ids="Cases/{project}.case_ids.txt",
+    output:
+        "Cases/VCF/{project}.split_cases_{chr}.vcf.gz",
+    log:
+        "logs/split_cases_{chr}.log",
+    benchmark:
+        "benchmarks/split_cases_{chr}.txt",
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "bcftools view "
+        "-S {input.ids} "
+        "-c 1 "
+        "--force-samples "
+        "-o {output} "
+        "-O z "
+        "{input.vcf} "
+        "2> {log} "
+
+#--------------------------------------------------------------------------------
+# test_split_cases
+#--------------------------------------------------------------------------------
+
+rule test_split_cases:
+    input:
+        "Cases/VCF/{project}.split_cases_{chr}.vcf.gz",
+    output:
+        "Cases/VCF/{project}.split_cases_{chr}_test_gzip.txt",
+    log:
+        "logs/test_split_cases_{chr}.log",
+    benchmark:
+        "benchmarks/test_split_cases_{chr}.txt",
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "get_file_details {input} "
+        "> {output} "
+        "2> {log} "
+
+#--------------------------------------------------------------------------------
+# tabix_split_cases
+#--------------------------------------------------------------------------------
+
+rule tabix_split_cases:
+    input:
+        vcf="Cases/VCF/{project}.split_cases_{chr}.vcf.gz",
+    output:
+        "Cases/VCF/{project}.split_cases_{chr}.vcf.gz.tbi",
+    log:
+        "logs/tabix_split_cases_{chr}.log",
+    benchmark:
+        "benchmarks/tabix_split_cases_{chr}.txt",
+    wildcard_constraints:
+        chr="[^_.-]+",
+        #project="[^\.]+",
+    shell:
+        "tabix {input.vcf} "
+        "2> {log} "
+
+#--------------------------------------------------------------------------------
+# concat_cases
+#--------------------------------------------------------------------------------
+
+rule concat_cases:
+    input:
+        vcf=expand("Cases/VCF/{project}.split_cases_{chr}.vcf.gz", project=config["project"],
+                   chr=config["chr"]),
+        tbi=expand("Cases/VCF/{project}.split_cases_{chr}.vcf.gz.tbi", project=config["project"],
+                   chr=config["chr"]),
+        test=expand("Cases/VCF/{project}.split_cases_{chr}_test_gzip.txt", project=config["project"],
+                    chr=config["chr"]),
+    output:
+        "Cases/VCF/{project}.concat_cases.vcf.gz",
+    log:
+        vcf="logs/concat_cases.log",
+        bgzip="logs/concat_bgzip_cases.log",
+    benchmark:
+        "benchmarks/concat_cases.txt",
+    shell:
+        "bcftools concat "
+        "{input.vcf} "
+        "2> {log.vcf} "
+        #-------- PIPE --------
+        "| bgzip "
+        "> {output} "
+        "2> {log.bgzip} "
+
+#--------------------------------------------------------------------------------
+# test_gzip_concat_cases
+#--------------------------------------------------------------------------------
+
+rule test_gzip_concat_cases:
+    input:
+        "Cases/VCF/{project}.concat_cases.vcf.gz",
+    output:
+        "Cases/VCF/{project}.concat_cases_test_gzip.txt",
+    log:
+        "logs/test_gzip_concat_cases.log",
+    benchmark:
+        "benchmarks/test_gzip_concat_cases.txt",
+    shell:
+        "get_file_details {input} "
+        "> {output} "
+        "2> {log} "
+
+#--------------------------------------------------------------------------------
+# tabix_concat_cases
+#--------------------------------------------------------------------------------
+
+rule tabix_concat_cases:
+    input:
+        vcf="Cases/VCF/{project}.concat_cases.vcf.gz",
+    output:
+        "Cases/VCF/{project}.concat_cases.vcf.gz.tbi",
+    log:
+        "logs/tabix_concat_cases.log",
+    benchmark:
+        "benchmarks/tabix_concat_cases.txt",
+    shell:
+        "tabix {input.vcf} "
+        "2> {log} "
+
+#--------------------------------------------------------------------------------
+# bcftools_view_cases
+#--------------------------------------------------------------------------------
+
+rule bcftools_view_cases:
+    input:
+        vcf="Cases/VCF/{project}.concat_cases.vcf.gz",
+        tbi="Cases/VCF/{project}.concat_cases.vcf.gz.tbi",
+        test="Cases/VCF/{project}.concat_cases_test_gzip.txt",
+    output:
+        "Cases/Sample_VCF/{project}.{case_id}_.vcf.gz",
+    log:
+        "logs/bcftools_view_cases_{case_id}_.log",
+    benchmark:
+        "benchmarks/bcftools_view_cases_{case_id}_.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+        #case_id="[^\_]+",
+    shell:
+        "bcftools view "
+        "-s {wildcards.case_id} "
+        "-o {output} "
+        "-O z "
+        "--force-samples "
+        "{input.vcf} "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# vaast_converter_cases
+#--------------------------------------------------------------------------------
+
+rule vaast_converter_cases:
+    input:
+        "Cases/Sample_VCF/{project}.{case_id}_.vcf.gz",
+    output:
+        "Cases/GVF/{project}.{case_id}_.gvf",
+    log:
+        "logs/vaast_converter_cases_{case_id}_.log",
+    benchmark:
+        "benchmarks/vaast_converter_cases_{case_id}_.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+        #case_id="[^\_]+",
+    shell:
+        "/uufs/chpc.utah.edu/common/HIPAA/u0129786/VAAST/bin/vaast_tools/vaast_converter "
+        "--build GRCh37 "
+        "--stdout "
+        "{input} "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# sort_gvf_cases
+#--------------------------------------------------------------------------------
+
+rule sort_gvf_cases:
+    input:
+        "Cases/GVF/{project}.{case_id}_.gvf",
+    output:
+        temp("Cases/GVF/{project}.{case_id}_.sorted.gvf"),
+    log:
+        "logs/sort_gvf_cases_{case_id}_.log",
+    benchmark:
+        "benchmarks/sort_gvf_cases_{case_id}_.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+        #case_id="[^\_]+",
+    shell:
+        "/uufs/chpc.utah.edu/common/HIPAA/u0129786/VAAST/bin/vaast_tools/vaast_sort_gff "
+        "{input} "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# vat_cases
+#--------------------------------------------------------------------------------
+
+rule vat_cases:
+    input:
+        gff3=config['vaast_gff3'],
+        fasta=config['vaast_fasta'],
+        gvf="Cases/GVF/{project}.{case_id}_.sorted.gvf",
+    output:
+        "Cases/VAT/{project}.{case_id}_.vat.gvf",
+    log:
+        "logs/vat_cases_{case_id}_.log",
+    benchmark:
+        "benchmarks/vat_cases_{case_id}_.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+        #case_id="[^\_]+",
+    shell:
+        "/uufs/chpc.utah.edu/common/HIPAA/u0129786/VAAST/bin/VAT "
+        "--features {input.gff3} "
+        "--fasta {input.fasta} "
+        "{input.gvf} "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# index_vat_cases
+#--------------------------------------------------------------------------------
+
+rule index_vat_cases:
+    input:
+        "Cases/VAT/{project}.{case_id}_.vat.gvf",
+    output:
+        "Cases/VAT/{project}.{case_id}_.vat.vgi",
+    log:
+        "logs/index_vat_cases_{case_id}_.log",
+    benchmark:
+        "benchmarks/index_vat_cases_{case_id}_.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+        #case_id="[^\_]+",
+    shell:
+        "/uufs/chpc.utah.edu/common/HIPAA/u0129786/VAAST/bin/vaast_tools/vaast_indexer "
+        "{input} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# case_gvfs
+#--------------------------------------------------------------------------------
+
+rule case_gvfs:
+    input:
+        gvfs=expand("Cases/VAT/{project}.{case_id}_.vat.gvf", project=config['project'], case_id=config['case_ids']),
+        vgis=expand("Cases/VAT/{project}.{case_id}_.vat.vgi", project=config['project'], case_id=config['case_ids']),
+    output:
+        "Cases/{project}.case_gvfs.txt",
+    log:
+        "logs/case_gvfs.log",
+    benchmark:
+        "benchmarks/case_gvfs.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+        #case_id="[^\_]+",
+    shell:
+        "perl -e 'print join \"\\n\", qw({input.gvfs})' "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# vst_cases
+#--------------------------------------------------------------------------------
+
+rule vst_cases:
+    input:
+        "Cases/{project}.case_gvfs.txt",
+    output:
+        "Cases/{project}.cases.cdr",
+    log:
+        "logs/vst_cases.log",
+    benchmark:
+        "benchmarks/vst_cases.txt",
+    shell:
+        "/uufs/chpc.utah.edu/common/HIPAA/u0129786/VAAST/bin/VST "
+        "--input_files {input} "
+        "> {output} "
+        "2> {log}"
+
+# #--------------------------------------------------------------------------------
+# # xqc
+# #--------------------------------------------------------------------------------
+# 
+# rule xqc:
+#     input:
+#         vcf="{project}.concat_all.vcf",
+#         ped=config['xqc_ped_file'],
+#     output:
+#         "{project}.XQC/case_predict_pca.pdf",
+#         "{project}.XQC/control_predict_pca.pdf",
+#         "{project}.XQC/case_control_pca.pdf",
+#         "{project}.XQC/xqc.new.ped",
+#         "{project}.XQC/case_control.report.vcf",
+#         "{project}.XQC/{project}.mask.bed",
+#         "{project}.XQC/case_group.cdr",
+#         "{project}.XQC/control_group.cdr",
+#         "{project}.XQC/PCA_internal/samples_pca.score.csv",
+#         "{project}.XQC/PCA_internal/samples_pca.rotation.csv",
+#         "{project}.XQC/PCA_internal/samples_pca.matrix.txt",
+#     log:
+#         "logs/xqc.log",
+#     benchmark:
+#         "benchmarks/xqc.txt",
+#     conda:
+#         "conda_xpat.yml"
+#     threads: 60
+#     wildcard_constraints:
+#         project="[^\.]+",
+#     shell:
+#         "XQC "
+#         "--vcf {input.vcf} "
+#         "--ped {input.ped} "
+#         "--output {wildcards.project}.XQC "
+#         "--pca_external T "
+#         "--pca_internal T "
+#         "--nc_90 T "
+#         "--af_cutoff 0.1 "
+#         "--report VCF "
+#         "--project_name {wildcards.project} "
+#         "2> {log}"
+# 
+#         
+# #--------------------------------------------------------------------------------
+# # clean_bed
+# #--------------------------------------------------------------------------------
+# 
+# rule clean_bed:
+#     input:
+#         "{project}.XQC/{project}.mask.bed",
+#     output:
+#         "{project}.XQC/{project}.mask.merge.bed",
+#     log:
+#         "logs/clean_bed.log",
+#     benchmark:
+#         "benchmarks/clean_bed.txt",
+#     wildcard_constraints:
+#         project="[^\.]+",
+#     shell:
+#         "perl -ape 's/^chr//' "
+#         "{input} "
+#         "| sort -k1,1 -k2,2n "
+#         "| mergeBed -i stdin "
+#         "> {output} "
+#         "2> {log}"
+
+#--------------------------------------------------------------------------------
+# clean_case_cdr
+#--------------------------------------------------------------------------------
+
+rule clean_case_cdr:
+    input:
+        "Cases/{project}.cases.cdr",
+    output:
+        "Cases/{project}.cases.clean.cdr",
+    log:
+        "logs/clean_case_cdr.log",
+    benchmark:
+        "benchmarks/clean_case_cdr.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+    shell:
+        "perl -ape "
+        "'s|Cases/VAT/{wildcards.project}.||;s|_.vat.gvf||' "
+        "{input} "
+        "> {output} "
+        "2> {log}"
+        
+# #--------------------------------------------------------------------------------
+# # trim_covar_matrix
+# #--------------------------------------------------------------------------------
+# 
+# rule trim_covar_matrix:
+#     input:
+#         "Cases/{family}/{project}.XQC/PCA_internal/samples_pca.matrix.txt",
+#     output:
+#         "{project}.XQC/PCA_internal/samples_pca.matrix.trimmed.txt",
+#     log:
+#         "logs/trim_covar_matrix.log",
+#     benchmark:
+#         "benchmarks/trim_covar_matrix.txt",
+#     wildcard_constraints:
+#         project="[^\.]+",
+#     shell:
+#         "cut -f 1,2,3,4 "
+#         "{input}  "
+#         "> {output} "
+#         "2> {log}"
+
+#--------------------------------------------------------------------------------
+# family_ids
+#--------------------------------------------------------------------------------
+
+rule family_ids:
+    output:
+        "Cases/{project}.ids.txt",
+    log:
+        "logs/family_ids.log",
+    benchmark:
+        "benchmarks/family_ids.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+    params:
+        ids = config['case_ids'],
+    shell:
+        "perl -e "
+        "'print join \"\\n\", qw({params.ids})' "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# ped_tool_trim2nodes
+#--------------------------------------------------------------------------------
+
+rule ped_tool_trim2nodes:
+    input:
+        ids="Cases/{project}.ids.txt",
+        ped=config['ped_file'],
+    output:
+        "Cases/{project}.pv.ped",
+    log:
+        "logs/ped_tool_trim2nodes.log",
+    benchmark:
+        "benchmarks/ped_tool_trim2nodes.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+    shell:
+        "ped_tool.pl "
+        "edit trim2nodes "
+        "--nodes {input.ids} "
+        "{input.ped} "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# build_pvaast_ctl
+#--------------------------------------------------------------------------------
+
+rule build_pvaast_ctl:
+    input:
+        ped="Cases/{project}.pv.ped",
+        cdr="Cases/{project}.cases.clean.cdr",
+    output:
+        "Cases/{project}.pvaast.ctl",
+    log:
+        "logs/build_pvaast_ctl.log",
+    benchmark:
+        "benchmarks/build_pvaast_ctl.txt",
+    wildcard_constraints:
+        #project="[^\.]+",
+    shell:
+        "/uufs/chpc.utah.edu/common/HIPAA/u0129786/VAAST/bin/vaast_tools/build_pvaast_config "
+        "--ip {input.ped} "
+        "--ic {input.cdr} "
+        "--ur yes "
+        "--defaults large_fam,common,dominant "
+        "> {output} "
+        "2> {log}"
+
+#--------------------------------------------------------------------------------
+# vaast
+#--------------------------------------------------------------------------------
+
+rule vaast:
+    input:
+#         "{project}.XQC/case_predict_pca.pdf",
+#         "{project}.XQC/control_predict_pca.pdf",
+#         "{project}.XQC/PCA_internal/samples_pca.score.csv",
+#         "{project}.XQC/PCA_internal/samples_pca.rotation.csv",
+#         "{project}.XQC/case_control_pca.pdf",
+#         "{project}.XQC/xqc.new.ped",
+#         "{project}.XQC/case_control.report.vcf",
+#         "{project}.XQC/case_group.cdr",
+#         "{project}.XQC/control_group.cdr",
+#         mask_bed="{project}.XQC/{project}.mask.merge.bed",
+#         cov_matrix="{project}.XQC/PCA_internal/samples_pca.matrix.trimmed.txt",
+        gff3=config['vaast_gff3'],
+        control_cdr="Controls/{project}.controls.clean.cdr",
+        case_cdr="Cases/{project}.cases.clean.cdr",
+        pv_control="Cases/{project}.pvaast.ctl",
+        pv_ped="Cases/{project}.pv.ped",
+    output:
+        "Cases/{project}.vaast",
+        "Cases/{project}.simple",
+    log:
+        "logs/vaast.log",
+    benchmark:
+        "benchmarks/vaast.txt",
+    params:
+        vaast_perm = config['vaast_perm'],
+        vaast_base = "Cases/{project}"
+    threads: 20
+    wildcard_constraints:
+        #project="[^\.]+",
+    shell:
+        "/uufs/chpc.utah.edu/common/HIPAA/u0129786/VAAST/bin/VAAST "
+        "-m pvaast "
+        "-o {params.vaast_base} "
+        "-pv_control {input.pv_control} "
+        "-gp {params.vaast_perm} "
+        "-p {threads} "
+        "{input.gff3} "
+        "{input.control_cdr} "
+        "2> {log}"
+
+#       "--mask_regions {input.mask_bed} "
+#       "--cov_matrix {input.cov_matrix} "
+#       "--parallel_cov_matrix {threads} "
+
+#--------------------------------------------------------------------------------
+# phevor
+#--------------------------------------------------------------------------------
+
+rule phevor:
+    input:
+        simple="Cases/{project}.simple",
+        phevor_conf=config['phevor_conf'],
+    output:
+        "Cases/{project}.phevor.txt",
+    log:
+        "logs/phevor.log",
+    benchmark:
+        "benchmarks/phevor.txt",
+    params:
+        hpo_ids = config['hpo_ids']
+    shell:
+        "/uufs/chpc.utah.edu/common/HIPAA/u0129786/phevor2/bin/phevor_2 "
+        "-b GO "
+        "-f HPO "
+        "-c {input.phevor_conf} "
+        "-v {input.simple} "
+        "-i {params.hpo_ids} "
+        "> {output} "
+        "2> {log}"
+
+# #--------------------------------------------------------------------------------
+# # ped_tool_convert_madeline2_full_fam
+# #--------------------------------------------------------------------------------
+# 
+# rule ped_tool_convert_madeline2_full_fam:
+#     input:
+#         lambda wildcards: config['families'][wildcards.family]['fam_ped'],
+#     output:
+#         "Cases/{family}/{project}.{family}.full_fam.mdln2.txt",
+#     log:
+#         "logs/ped_tool_convert_madeline2_full_fam.{family}.log",
+#     benchmark:
+#         "benchmarks/ped_tool_convert_madeline2_full_fam.{family}.txt",
+#     wildcard_constraints:
+#         project="[^\.]+",
+#     shell:
+#         "ped_tool.pl "
+#         "convert madeline2 "
+#         "{input} "
+#         "> {output} "
+#         "2> {log}"
+# 
+# #--------------------------------------------------------------------------------
+# # madeline2_full_family
+# #--------------------------------------------------------------------------------
+# 
+# rule madeline2_full_family:
+#     input:
+#         "Cases/{family}/{project}.{family}.full_fam.mdln2.txt",
+#     output:
+#         "Cases/{family}/{project}.{family}.full_fam.mdln2.svg",
+#     log:
+#         "logs/madeline2_full_family.{family}.log",
+#     benchmark:
+#         "benchmarks/madeline2_full_family.{family}.txt",
+#     wildcard_constraints:
+#         project="[^\.]+",
+#     shell:
+#         "madeline2 "
+#         "-o {output} "
+#         "{input} "
+#         "&> {log}"
+# 
+# #--------------------------------------------------------------------------------
+# # convert2pdf_full_family
+# #--------------------------------------------------------------------------------
+# 
+# rule convert2pdf_full_family:
+#     input:
+#         "Cases/{family}/{project}.{family}.full_fam.mdln2.svg",
+#     output:
+#         "Cases/{family}/{project}.{family}.full_fam.mdln2.pdf",
+#     log:
+#         "logs/convert2pdf_full_family.{family}.log",
+#     benchmark:
+#         "benchmarks/convert2pdf_full_family.{family}.txt",
+#     wildcard_constraints:
+#         project="[^\.]+",
+#     shell:
+#         "convert "
+#         "{input} "
+#         "{output} "
+#         "2> {log}"
+# 
+# #--------------------------------------------------------------------------------
+# # ped_tool_convert_madeline2_sequenced
+# #--------------------------------------------------------------------------------
+# 
+# rule ped_tool_convert_madeline2_sequenced:
+#     input:
+#         "Cases/{family}/{project}.{family}.pv.ped",
+#     output:
+#         "Cases/{family}/{project}.{family}.mdln2.txt",
+#     log:
+#         "logs/ped_tool_convert_madeline2_sequenced.{family}.log",
+#     benchmark:
+#         "benchmarks/ped_tool_convert_madeline2_sequenced.{family}.txt",
+#     wildcard_constraints:
+#         project="[^\.]+",
+#     shell:
+#         "ped_tool.pl "
+#         "convert madeline2 "
+#         "{input} "
+#         "> {output} "
+#         "2> {log}"
+# 
+# #--------------------------------------------------------------------------------
+# # madeline2_sequenced
+# #--------------------------------------------------------------------------------
+# 
+# rule madeline2_sequenced:
+#     input:
+#         "Cases/{family}/{project}.{family}.mdln2.txt",
+#     output:
+#         "Cases/{family}/{project}.{family}.mdln2.svg",
+#     log:
+#         "logs/madeline2_sequenced.log",
+#     benchmark:
+#         "benchmarks/madeline2_sequenced.txt",
+#     wildcard_constraints:
+#         project="[^\.]+",
+#     shell:
+#         "madeline2 "
+#         "-o {output} "
+#         "{input} "
+#         "&> {log}"
+# 
+# #--------------------------------------------------------------------------------
+# # convert2pdf_sequenced
+# #--------------------------------------------------------------------------------
+# 
+# rule convert2pdf_sequenced:
+#     input:
+#         "Cases/{family}/{project}.{family}.mdln2.svg",
+#     output:
+#         "Cases/{family}/{project}.{family}.mdln2.pdf",
+#     log:
+#         "logs/convert2pdf_sequenced.{family}.log",
+#     benchmark:
+#         "benchmarks/convert2pdf_sequenced.{family}.txt",
+#     wildcard_constraints:
+#         project="[^\.]+",
+#     shell:
+#         "convert "
+#         "{input} "
+#         "{output} "
+#         "2> {log}"
+
+# VAAST Manhattan Plot
+
+# Phevor Manhattan Plot
+
+# VAAST QQ Plot
+
+# Aggregate report
+
+# #--------------------------------------------------------------------------------
+# # rule_name
+# #--------------------------------------------------------------------------------
+# 
+# rule rule_name:
+#     input:
+#         file=some_file.txt
+#         vcf=config["vcf_file"],
+#         tbi=expand("{vcf_file}.tbi", vcf_file=config["vcf_file"]),
+#     output:
+#         "{project}.rule_name.vcf.gz",
+#     log:
+#         "logs/rule_name.log",
+#     benchmark:
+#         "benchmarks/rule_name.txt",
+#     shell:
+#         "rule_name "
+#         "{input.vcf} "
+#         "> {output} "
+#         "2> {log}"
