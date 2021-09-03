@@ -1,0 +1,174 @@
+#--------------------------------------------------------------------------------
+# VAAST2 Case/Control Snakemake Configuration File
+#--------------------------------------------------------------------------------
+
+# Project name
+#----------------------------------------
+project: 'Ewing_pVAAST'
+
+# Data parameters
+#----------------------------------------
+# VCF file that contains both cases and controls jointly called against GRCh37.
+# If your VCF file was called using the UCSC hg19 assembly you should remove chrM 
+# as it's sequence is out of date.  See User's Guide for more help.
+vcf_file: 'Imputed_Cases_Controls.vcf.gz'
+ped_file: 'Imputed.ped'
+hpo_ids:  'HP:0000510'
+gnomad_conf: 'gnomad.conf'
+gnomad_vcf: '/scratch/ucgd/lustre-work/u6006572/gnomad_vcf/gnomad.exomes.r2.1.sites.vcf.gz'
+
+# The GRCh37 reference genome
+#----------------------------------------
+ref_genome: '/scratch/ucgd/lustre-work/u6006572/Ewing_pvaast/human_g1k_v37_decoy_phix.fasta'
+
+# VAAST
+#----------------------------------------
+cds_bed_file: '/scratch/ucgd/lustre/common/data/VAAST/VAAST2/hg19/Features/RefSeq_GRCh37.p10_VAAST_CDS10.bed'
+vaast_gff3:   '/scratch/ucgd/lustre/common/data/VAAST/VAAST2/hg19/Features/RefSeq_GRCh37.p10_VAAST.gff3'
+vaast_fasta:  '/scratch/ucgd/lustre/common/data/VAAST/VAAST2/hg19/Fasta/vaast_hsap_GRCh37.fa'
+vaast_perm: 100000
+
+# Phevor
+#----------------------------------------
+phevor_conf: '/uufs/chpc.utah.edu/common/HIPAA/u0129786/phevor2/phevor.conf'
+
+
+# Misc parameters
+#----------------------------------------
+max_gnomad_af: 0.01
+
+# System paramaters
+#----------------------------------------
+tmpdir: '/tmp'
+max_threads: 60
+
+#-------------------------------------------------------------------------------
+# chr: full list of chromosomes
+#-------------------------------------------------------------------------------
+
+chr:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  - 18
+  - 19
+  - 20
+  - 21
+  - 22
+  - X
+  - Y
+  
+#-------------------------------------------------------------------------------
+# Case IDs
+#-------------------------------------------------------------------------------
+
+case_ids:
+  - ALC_10
+  - CRG_8
+  - DGG_14
+  - EAM_17
+  - EIG_1
+  - FGC_9
+  - GAG_18
+  - JAG_5
+  - JMG_2
+  - JSG_12
+  - KGC_7
+  - KMG_6
+  - MAL_4
+  - MRG_13
+  - OIG_15
+  - RMG_16
+  - THG_11
+
+#-------------------------------------------------------------------------------
+# Control IDs
+#-------------------------------------------------------------------------------
+
+control_ids:
+  - 105213
+  - 124216
+  - 134807
+  - 138681
+  - 156127
+  - 157134
+  - 158079
+  - 188557
+  - 194442
+  - 215136
+  - 218999
+  - 230259
+  - 243046
+  - 252514
+  - 263339
+  - 315074
+  - 315159
+  - 319273
+  - 341060-2
+  - 341060
+  - 342284
+  - 356993
+  - 359460
+  - 364039
+  - 364808-2
+  - 364808
+  - 377918
+  - 393976
+  - 407496
+  - 436129
+  - 438485
+  - 449561
+  - 456619
+  - 47986
+  - 530261
+  - 531108-2
+  - 531108-3
+  - 531108-4
+  - 531108-5
+  - 531108
+  - 554330-2
+  - 554330
+  - 558677
+  - 574202
+  - 575683
+  - 585077-2
+  - 585077
+  - 615354
+  - 637429
+  - 640843-2
+  - 640843
+  - 687998
+  - 69303
+  - 695239
+  - 706424
+  - 718330
+  - 720338
+  - 734663
+  - 750026
+  - 763219
+  - 777844
+  - 792237
+  - 812428
+  - 829273
+  - 841193
+  - 842366
+  - 850357
+  - 8654
+  - 878825-2
+  - 878825-3
+  - 878825
+  - 9373
