@@ -60,7 +60,7 @@ merged_File$PosMB <- round(merged_File$Pos/1000000,digits = 4)
 merged_File$Concordance <- (merged_File$WES_GT-merged_File$XLC_GT)*-1
 merged_File$Concordance <- as.factor(merged_File$Concordance)
 
-i=22
+i=8
 Chr<- filter(merged_File, Chr==i)
 Chr <- group_by(Chr,Concordance)
 Chr_summary <- summarize(Chr, Total=n())
@@ -81,4 +81,35 @@ plot1
 plot2
 grid.newpage()
 grid.table(Chr_summary)
+dev.off()
+
+
+library(vcfR)
+
+vcf <- read.vcfR( "E_1.vcf.gz.CHR8", verbose = FALSE )
+chrom <- create.chromR(name='XLC', vcf=vcf)
+plot(chrom)
+
+vcf_field_names(vcf, tag = "FORMAT")
+
+VCF_data <- vcfR2tidy(vcf, format_fields = c("GT", "DP"))
+
+Chr_Metadata <-as.data.frame(VCF_data$fix)
+Chr_Metadata <- Chr_Metadata[,c("ChromKey","CHROM","POS","REF","ALT","DP","QUAL")]
+Chr_Metadata$CHROM <- gsub("chr","",Chr_Metadata$CHROM)
+Chr_Metadata$ChromKey <- paste0(Chr_Metadata$CHROM,":",Chr_Metadata$POS,Chr_Metadata$REF,":",Chr_Metadata$ALT) # make new column
+Chr_Metadata <- Chr_Metadata[,c("ChromKey","DP","QUAL")]
+colnames(Chr_Metadata)[1] <- "Identifier"
+
+Chr_with_DP <- merge(Chr, Chr_Metadata,by = "Identifier", all.x=TRUE)
+Chr_with_DP <- group_by(Chr_with_DP,Concordance,DP)
+Chr_with_DP_Summary <- summarize(Chr_with_DP, Count=n())
+
+plot3<- ggplot(Chr_with_DP, aes(x = Concordance, group = DP, fill = DP)) +
+  geom_bar(position = position_dodge(width = 0.8)) + ggtitle ("Depth of Coverage vs Call Concordance Chr8")
+
+pdf(paste0("Chr",i,"concordance.pdf"))
+plot3
+grid.newpage()
+grid.table(Chr_with_DP_Summary)
 dev.off()
