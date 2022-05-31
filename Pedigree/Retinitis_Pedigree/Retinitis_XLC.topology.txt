@@ -1,0 +1,17 @@
+INDEX	FAMILY	TREE	ALPHA	BETA	X_A	X_B	Y
+0_0	Retinitis1	0_0	THG_11		   1.00	   1.00	  13.92
+0_1	Retinitis1	0_0	RMG_16		   3.00	   3.00	  13.92
+0_2	Retinitis1	0_0	OIG_15	AJG_0	   5.00	   7.00	  13.92
+0_3	Retinitis1	0_0	MRG_13		   9.00	   9.00	  13.92
+0_4	Retinitis1	0_0	KGC_7		  18.00	  18.00	   9.28
+0_5	Retinitis1	0_0	JSG_12	ESM_0	  10.00	  12.00	   9.28
+0_6	Retinitis1	0_0	JMG_2	KMG_6	  14.00	  16.00	   9.28
+0_7	Retinitis1	0_0	JAG_5		   4.00	   4.00	   9.28
+0_8	Retinitis1	0_0	GAG_18		   6.00	   6.00	   9.28
+0_9	Retinitis1	0_0	FSP_0	FMG_0	   8.50	  10.50	  18.56
+0_10	Retinitis1	0_0	FGC_9		  20.00	  20.00	   9.28
+0_11	Retinitis1	0_0	EIG_1	MAL_4	  11.00	  13.00	  13.92
+0_12	Retinitis1	0_0	EAM_17		  11.00	  11.00	   4.64
+0_13	Retinitis1	0_0	DGG_14		   8.00	   8.00	   9.28
+0_14	Retinitis1	0_0	CRG_8	ALC_10	  18.00	  20.00	  13.92
+0_15	Retinitis1	0_0	ASG_19		  15.00	  15.00	   4.64

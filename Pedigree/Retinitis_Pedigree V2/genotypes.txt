@@ -1,0 +1,23 @@
+Individual_ID	Genotype	GQX	Qual_Score	Alt_Depth	Read_Depth
+EIG_1	1/1	5	54	2	2
+JMG_2	0/1	5	5	2	4
+MAL_4	-/0			0	1
+JAG_5	1/1	4	14	2	2
+KMG_6	-/0			0	1
+KGC_7	0/0			0	2
+CRG_8	-/-		
+FGC_9	0/1	33	35	3	5
+ALC_10	0/0			0	2
+THG_11	-/-	
+JSG_12	0/1	6	6	1	2
+MRG_13	0/0			0	2
+DGG_14	-/-	
+OIG_15	1/1	4	14	2	2
+RMG_16	-/-	
+EAM_17	-/-	
+GAG_18	-/-	
+FMG_0			
+FSP_0		
+AJG_0		
+ESM_0		
+ASG_19		
